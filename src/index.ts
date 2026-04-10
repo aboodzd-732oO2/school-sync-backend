@@ -13,7 +13,10 @@ import lookupRoutes from './routes/lookup.routes';
 const app = express();
 
 // Middleware
-app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+app.use(cors({
+  origin: env.FRONTEND_URL === '*' ? true : env.FRONTEND_URL.split(',').map(s => s.trim()),
+  credentials: true
+}));
 app.use(express.json());
 
 // Routes

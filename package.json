@@ -5,9 +5,10 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "npx prisma generate && npx prisma migrate deploy && tsc",
     "start": "node dist/index.js",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "postbuild": "npx prisma db seed || echo 'Seed skipped'"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
