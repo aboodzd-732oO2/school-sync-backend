@@ -1,0 +1,167 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────── جداول مرجعية ────────────────
+
+model Governorate {
+  id           Int           @id @default(autoincrement())
+  name         String        @unique
+  institutions Institution[]
+  warehouses   Warehouse[]
+}
+
+model Department {
+  id         Int         @id @default(autoincrement())
+  key        String      @unique
+  labelAr    String
+  warehouses Warehouse[]
+  requests   Request[]
+}
+
+// ──────────────── المستخدمين ────────────────
+
+enum UserType {
+  institution
+  warehouse
+}
+
+model User {
+  id            Int          @id @default(autoincrement())
+  email         String       @unique
+  passwordHash  String
+  userType      UserType
+  createdAt     DateTime     @default(now())
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  institutionId Int?         @unique
+  warehouse     Warehouse?   @relation(fields: [warehouseId], references: [id])
+  warehouseId   Int?         @unique
+}
+
+model Institution {
+  id              Int         @id @default(autoincrement())
+  name            String
+  institutionType String
+  governorate     Governorate @relation(fields: [governorateId], references: [id])
+  governorateId   Int
+  user            User?
+  requests        Request[]
+
+  @@unique([name, governorateId])
+}
+
+model Warehouse {
+  id            Int             @id @default(autoincrement())
+  name          String
+  department    Department      @relation(fields: [departmentId], references: [id])
+  departmentId  Int
+  governorate   Governorate     @relation(fields: [governorateId], references: [id])
+  governorateId Int
+  user          User?
+  requests      Request[]
+  inventory     InventoryItem[]
+
+  @@unique([departmentId, governorateId])
+}
+
+// ──────────────── الطلبات ────────────────
+
+enum Priority {
+  high
+  medium
+  low
+}
+
+enum RequestStatus {
+  draft
+  pending
+  in_progress
+  ready_for_pickup
+  completed
+  rejected
+  cancelled
+  undelivered
+}
+
+model Request {
+  id               Int           @id @default(autoincrement())
+  title            String
+  description      String
+  impact           String?
+  priority         Priority
+  status           RequestStatus @default(draft)
+  quantity         Int
+  studentsAffected Int           @default(0)
+  unitType         String        @default("متنوع")
+  subcategory      String
+
+  dateSubmitted    DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  institution      Institution   @relation(fields: [institutionId], references: [id])
+  institutionId    Int
+  department       Department    @relation(fields: [departmentId], references: [id])
+  departmentId     Int
+  warehouse        Warehouse     @relation(fields: [warehouseId], references: [id])
+  warehouseId      Int
+
+  requestedItems   RequestItem[]
+
+  rejectionReason    String?
+  rejectionDate      DateTime?
+  cancellationReason String?
+  cancellationDate   DateTime?
+  cancellationType   String?
+}
+
+model RequestItem {
+  id          Int     @id @default(autoincrement())
+  itemName    String
+  originalKey String
+  quantity    Int
+  unitType    String
+  displayText String
+
+  request   Request @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId Int
+}
+
+// ──────────────── المخزون ────────────────
+
+model InventoryItem {
+  id           Int    @id @default(autoincrement())
+  name         String
+  category     String
+  quantity     Int
+  unitType     String
+  minThreshold Int    @default(5)
+  department   String
+
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id])
+  warehouseId Int
+
+  @@unique([name, department, warehouseId])
+}
+
+// ──────────────── التقارير الشهرية ────────────────
+
+model MonthlyReport {
+  id                    Int      @id @default(autoincrement())
+  month                 Int
+  year                  Int
+  generatedDate         DateTime @default(now())
+  institutionName       String
+  totalRequests         Int
+  completedRequests     Int
+  pendingRequests       Int
+  inProgressRequests    Int
+  totalItems            Int
+  totalStudentsAffected Int
+
+  @@unique([month, year, institutionName])
+}
