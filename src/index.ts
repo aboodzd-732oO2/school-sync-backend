@@ -18,6 +18,9 @@ import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
+// Trust Railway/Netlify/Cloudflare proxy — required for express-rate-limit to read X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 
