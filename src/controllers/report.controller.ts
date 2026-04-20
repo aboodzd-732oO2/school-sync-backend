@@ -26,7 +26,7 @@ export async function generate(req: Request, res: Response) {
 
 export async function getById(req: Request, res: Response) {
   try {
-    const report = await reportService.getReportById(paramId(req));
+    const report = await reportService.getReportById(paramId(req), req.user!.institutionId!);
     return success(res, report);
   } catch (err: any) {
     return error(res, err.message, 404);

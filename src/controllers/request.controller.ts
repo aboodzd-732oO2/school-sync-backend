@@ -36,7 +36,11 @@ export async function list(req: Request, res: Response) {
 
 export async function getById(req: Request, res: Response) {
   try {
-    const request = await requestService.getRequestById(paramId(req));
+    const request = await requestService.getRequestById(paramId(req), {
+      userType: req.user!.userType,
+      institutionId: req.user!.institutionId,
+      warehouseId: req.user!.warehouseId,
+    });
     return success(res, request);
   } catch (err: any) {
     return error(res, err.message, 404);

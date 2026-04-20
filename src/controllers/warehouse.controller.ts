@@ -40,7 +40,10 @@ export async function updateRequestStatus(req: Request, res: Response) {
     const newStatus = statusMap[req.body.status] || req.body.status;
 
     // نجيب الحالة القديمة قبل التحديث
-    const oldRequest = await requestService.getRequestById(paramId(req));
+    const oldRequest = await requestService.getRequestById(paramId(req), {
+      userType: req.user!.userType,
+      warehouseId: req.user!.warehouseId,
+    });
     const oldStatusMap: Record<string, string> = {
       'in-progress': 'in_progress',
       'ready-for-pickup': 'ready_for_pickup',

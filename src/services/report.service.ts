@@ -52,8 +52,17 @@ export async function getReports(institutionId: number) {
   });
 }
 
-export async function getReportById(reportId: number) {
+export async function getReportById(reportId: number, institutionId?: number) {
   const report = await prisma.monthlyReport.findUnique({ where: { id: reportId } });
   if (!report) throw new Error('التقرير غير موجود');
+
+  // فحص الملكية (يمنع IDOR)
+  if (institutionId !== undefined) {
+    const institution = await prisma.institution.findUnique({ where: { id: institutionId } });
+    if (!institution || report.institutionName !== institution.name) {
+      throw new Error('التقرير غير موجود');
+    }
+  }
+
   return report;
 }

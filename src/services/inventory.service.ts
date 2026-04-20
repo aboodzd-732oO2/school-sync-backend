@@ -61,8 +61,8 @@ export async function getLowStockItems(warehouseId: number) {
 
 export async function consumeStock(warehouseId: number, items: Array<{ itemName: string; quantity: number; department: string }>) {
   for (const item of items) {
-    const inv = await prisma.inventoryItem.findFirst({
-      where: { warehouseId, name: { contains: item.itemName, mode: 'insensitive' } }
+    const inv = await prisma.inventoryItem.findUnique({
+      where: { name_department_warehouseId: { name: item.itemName, department: item.department, warehouseId } }
     });
     if (inv && inv.quantity >= item.quantity) {
       await prisma.inventoryItem.update({
@@ -75,8 +75,8 @@ export async function consumeStock(warehouseId: number, items: Array<{ itemName:
 
 export async function returnStock(warehouseId: number, items: Array<{ itemName: string; quantity: number; department: string }>) {
   for (const item of items) {
-    const inv = await prisma.inventoryItem.findFirst({
-      where: { warehouseId, name: { contains: item.itemName, mode: 'insensitive' } }
+    const inv = await prisma.inventoryItem.findUnique({
+      where: { name_department_warehouseId: { name: item.itemName, department: item.department, warehouseId } }
     });
     if (inv) {
       await prisma.inventoryItem.update({

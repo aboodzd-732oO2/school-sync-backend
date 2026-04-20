@@ -17,16 +17,50 @@ model Governorate {
 }
 
 model Department {
-  id         Int         @id @default(autoincrement())
-  key        String      @unique
+  id         Int              @id @default(autoincrement())
+  key        String           @unique
   labelAr    String
+  color      String           @default("#64748b")
+  icon       String           @default("folder")
   warehouses Warehouse[]
   requests   Request[]
+  items      DepartmentItem[]
+}
+
+model Unit {
+  id      Int    @id @default(autoincrement())
+  name    String @unique
+}
+
+model Priority {
+  id      Int    @id @default(autoincrement())
+  key     String @unique
+  labelAr String
+  color   String @default("#64748b")
+  level   Int    @default(1)
+}
+
+model InstitutionType {
+  id      Int    @id @default(autoincrement())
+  key     String @unique
+  labelAr String
+}
+
+model DepartmentItem {
+  id           Int        @id @default(autoincrement())
+  key          String
+  labelAr      String
+  defaultUnit  String     @default("قطعة")
+  department   Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  departmentId Int
+
+  @@unique([key, departmentId])
 }
 
 // ──────────────── المستخدمين ────────────────
 
 enum UserType {
+  admin
   institution
   warehouse
 }
@@ -36,11 +70,40 @@ model User {
   email         String       @unique
   passwordHash  String
   userType      UserType
+  isActive      Boolean      @default(true)
   createdAt     DateTime     @default(now())
   institution   Institution? @relation(fields: [institutionId], references: [id])
   institutionId Int?         @unique
   warehouse     Warehouse?   @relation(fields: [warehouseId], references: [id])
   warehouseId   Int?         @unique
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  type      String
+  title     String
+  body      String?
+  read      Boolean  @default(false)
+  linkType  String?
+  linkId    String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+}
+
+model RequestComment {
+  id        Int      @id @default(autoincrement())
+  request   Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId Int
+  userId    Int
+  userEmail String
+  userType  String
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([requestId])
 }
 
 model Institution {
@@ -51,8 +114,10 @@ model Institution {
   governorateId   Int
   user            User?
   requests        Request[]
+  deletedAt       DateTime?
 
   @@unique([name, governorateId])
+  @@index([deletedAt])
 }
 
 model Warehouse {
@@ -65,17 +130,15 @@ model Warehouse {
   user          User?
   requests      Request[]
   inventory     InventoryItem[]
+  deletedAt     DateTime?
 
   @@unique([departmentId, governorateId])
+  @@index([deletedAt])
 }
 
 // ──────────────── الطلبات ────────────────
 
-enum Priority {
-  high
-  medium
-  low
-}
+// Priority enum تم استبداله بجدول Priority (ديناميكي)
 
 enum RequestStatus {
   draft
@@ -93,7 +156,7 @@ model Request {
   title            String
   description      String
   impact           String?
-  priority         Priority
+  priority         String
   status           RequestStatus @default(draft)
   quantity         Int
   studentsAffected Int           @default(0)
@@ -111,12 +174,21 @@ model Request {
   warehouseId      Int
 
   requestedItems   RequestItem[]
+  comments         RequestComment[]
 
   rejectionReason    String?
   rejectionDate      DateTime?
   cancellationReason String?
   cancellationDate   DateTime?
   cancellationType   String?
+
+  attachments Json?
+  deletedAt   DateTime?
+
+  @@index([institutionId])
+  @@index([warehouseId])
+  @@index([status])
+  @@index([deletedAt])
 }
 
 model RequestItem {
@@ -146,6 +218,38 @@ model InventoryItem {
   warehouseId Int
 
   @@unique([name, department, warehouseId])
+}
+
+// ──────────────── سجل الأحداث (Audit Log) ────────────────
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  userId     Int?
+  userEmail  String
+  action     String
+  entityType String
+  entityId   String?
+  payload    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType])
+  @@index([userId])
+}
+
+// ──────────────── طلبات استعادة كلمة المرور ────────────────
+
+model PasswordResetRequest {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  userEmail    String
+  status       String    @default("pending")
+  requestedAt  DateTime  @default(now())
+  resolvedAt   DateTime?
+  newPassword  String?
+
+  @@index([status])
+  @@index([userId])
 }
 
 // ──────────────── التقارير الشهرية ────────────────

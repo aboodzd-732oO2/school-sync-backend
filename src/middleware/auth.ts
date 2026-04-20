@@ -6,7 +6,7 @@ import { error } from '../utils/apiResponse';
 
 interface JwtPayload {
   userId: number;
-  userType: 'institution' | 'warehouse';
+  userType: 'admin' | 'institution' | 'warehouse';
 }
 
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
@@ -22,10 +22,14 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     if (!user) {
       return error(res, 'المستخدم غير موجود', 401);
     }
+    if (!user.isActive) {
+      return error(res, 'الحساب معطّل، يرجى التواصل مع المدير', 403);
+    }
 
     req.user = {
       userId: user.id,
       userType: user.userType,
+      email: user.email,
       institutionId: user.institutionId,
       warehouseId: user.warehouseId,
     };
@@ -33,6 +37,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
   } catch {
     return error(res, 'رمز غير صالح أو منتهي الصلاحية', 401);
   }
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (req.user?.userType !== 'admin') {
+    return error(res, 'هذا الإجراء متاح فقط للمدير', 403);
+  }
+  next();
 }
 
 export function requireInstitution(req: Request, res: Response, next: NextFunction) {

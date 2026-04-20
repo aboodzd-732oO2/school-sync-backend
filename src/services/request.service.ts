@@ -1,20 +1,13 @@
-import { RequestStatus, Priority } from '@prisma/client';
+import { RequestStatus } from '@prisma/client';
 import { prisma } from '../config/db';
-
-// خريطة الأقسام لتوجيه الطلبات تلقائياً
-const departmentWarehouseMap: Record<string, string> = {
-  'materials': 'مستودع المواد والأثاث التعليمي',
-  'maintenance': 'مستودع الصيانة والإصلاح',
-  'academic-materials': 'مستودع المواد الأكاديمية والكتب',
-  'technology': 'مستودع التقنيات التعليمية',
-  'safety': 'مستودع السلامة والأمان',
-};
+import { createNotification } from './notification.service';
+import { emitToUsers } from '../socket';
 
 interface CreateRequestInput {
   title: string;
   description: string;
   impact?: string;
-  priority: 'high' | 'medium' | 'low';
+  priority: string;
   status?: 'draft' | 'pending';
   quantity: number;
   studentsAffected?: number;
@@ -47,9 +40,9 @@ export async function createRequest(institutionId: number, input: CreateRequestI
     where: { departmentId_governorateId: { departmentId: department.id, governorateId: institution.governorateId } }
   });
 
-  // إذا ما لقينا مستودع، أنشئه
+  // إذا ما لقينا مستودع، أنشئه باستخدام اسم القسم الديناميكي
   if (!warehouse) {
-    const warehouseName = `${departmentWarehouseMap[input.departmentKey]} - ${institution.governorate.name}`;
+    const warehouseName = `${department.labelAr.replace(/^قسم\s*/, 'مستودع ')} - ${institution.governorate.name}`;
     warehouse = await prisma.warehouse.create({
       data: {
         name: warehouseName,
@@ -64,7 +57,7 @@ export async function createRequest(institutionId: number, input: CreateRequestI
       title: input.title,
       description: input.description,
       impact: input.impact,
-      priority: input.priority as Priority,
+      priority: input.priority,
       status: (input.status || 'pending') as RequestStatus,
       quantity: input.quantity,
       studentsAffected: input.studentsAffected || 0,
@@ -80,12 +73,28 @@ export async function createRequest(institutionId: number, input: CreateRequestI
     include: {
       requestedItems: true,
       department: true,
-      warehouse: { include: { governorate: true } },
+      warehouse: { include: { governorate: true, user: true } },
       institution: { include: { governorate: true } },
     }
   });
 
-  return formatRequest(request);
+  const formatted = formatRequest(request);
+
+  // إشعار للمستودع عند طلب جديد (فقط إذا الحالة pending)
+  if (request.status === 'pending' && request.warehouse?.user?.id) {
+    await createNotification({
+      userId: request.warehouse.user.id,
+      type: 'request-new',
+      title: `طلب جديد: ${request.title}`,
+      body: `من ${institution.name}`,
+      linkType: 'request',
+      linkId: String(request.id),
+    });
+    // بث للمستودع لإضافة الطلب في قائمته فوراً
+    emitToUsers([request.warehouse.user.id], 'request:new', formatted);
+  }
+
+  return formatted;
 }
 
 export async function getInstitutionRequests(institutionId: number, filters?: {
@@ -146,7 +155,10 @@ export async function getWarehouseRequests(warehouseId: number, filters?: {
   return requests.map(formatRequest);
 }
 
-export async function getRequestById(requestId: number) {
+export async function getRequestById(
+  requestId: number,
+  actor?: { userType: 'admin' | 'institution' | 'warehouse'; institutionId?: number | null; warehouseId?: number | null }
+) {
   const request = await prisma.request.findUnique({
     where: { id: requestId },
     include: {
@@ -157,6 +169,17 @@ export async function getRequestById(requestId: number) {
     }
   });
   if (!request) throw new Error('الطلب غير موجود');
+
+  // فحص الملكية (يمنع IDOR)
+  if (actor && actor.userType !== 'admin') {
+    if (actor.userType === 'institution' && request.institutionId !== actor.institutionId) {
+      throw new Error('الطلب غير موجود');
+    }
+    if (actor.userType === 'warehouse' && request.warehouseId !== actor.warehouseId) {
+      throw new Error('الطلب غير موجود');
+    }
+  }
+
   return formatRequest(request);
 }
 
@@ -229,12 +252,44 @@ export async function updateRequestStatus(requestId: number, status: RequestStat
     include: {
       requestedItems: true,
       department: true,
-      warehouse: { include: { governorate: true } },
-      institution: { include: { governorate: true } },
+      warehouse: { include: { governorate: true, user: true } },
+      institution: { include: { governorate: true, user: true } },
     }
   });
 
-  return formatRequest(updated);
+  // إشعار للجهة الأخرى عند تغيير الحالة
+  const statusLabels: Record<string, string> = {
+    pending: 'قيد الانتظار',
+    in_progress: 'قيد التنفيذ',
+    ready_for_pickup: 'جاهز للاستلام',
+    completed: 'مكتمل',
+    rejected: 'مرفوض',
+    cancelled: 'ملغى',
+    undelivered: 'لم يُستلم',
+  };
+  const targetUserId = status === 'pending' || status === 'cancelled' || status === 'undelivered'
+    ? updated.warehouse?.user?.id
+    : updated.institution?.user?.id;
+  if (targetUserId) {
+    await createNotification({
+      userId: targetUserId,
+      type: 'request-status',
+      title: `تحديث طلب: ${updated.title}`,
+      body: `الحالة الجديدة: ${statusLabels[status] || status}`,
+      linkType: 'request',
+      linkId: String(updated.id),
+    });
+  }
+
+  const formatted = formatRequest(updated);
+  // بث تحديث الحالة للطرفين (المؤسسة والمستودع) لتحديث قوائمهما فوراً
+  emitToUsers(
+    [updated.institution?.user?.id, updated.warehouse?.user?.id],
+    'request:status-changed',
+    formatted
+  );
+
+  return formatted;
 }
 
 export async function deleteRequest(requestId: number, institutionId: number) {

@@ -4,7 +4,7 @@ export const createRequestSchema = z.object({
   title: z.string().min(1, 'العنوان مطلوب'),
   description: z.string().min(1, 'الوصف مطلوب'),
   impact: z.string().optional(),
-  priority: z.enum(['high', 'medium', 'low']),
+  priority: z.string().min(1, 'الأولوية مطلوبة'),
   status: z.enum(['draft', 'pending']).default('pending'),
   quantity: z.number().int().positive('الكمية يجب أن تكون أكبر من صفر'),
   studentsAffected: z.number().int().min(0).default(0),
@@ -17,14 +17,14 @@ export const createRequestSchema = z.object({
     quantity: z.number().int().positive(),
     unitType: z.string(),
     displayText: z.string(),
-  })).optional(),
-});
+  }).strict()).optional(),
+}).strict();
 
 export const updateRequestSchema = z.object({
-  title: z.string().optional(),
-  description: z.string().optional(),
+  title: z.string().min(1).optional(),
+  description: z.string().min(1).optional(),
   impact: z.string().optional(),
-  priority: z.enum(['high', 'medium', 'low']).optional(),
+  priority: z.string().min(1).optional(),
   quantity: z.number().int().positive().optional(),
   studentsAffected: z.number().int().min(0).optional(),
   unitType: z.string().optional(),
@@ -35,12 +35,12 @@ export const updateRequestSchema = z.object({
     quantity: z.number().int().positive(),
     unitType: z.string(),
     displayText: z.string(),
-  })).optional(),
-});
+  }).strict()).optional(),
+}).strict();
 
 export const updateStatusSchema = z.object({
   status: z.enum(['draft', 'pending', 'in_progress', 'in-progress', 'ready_for_pickup', 'ready-for-pickup', 'completed', 'rejected', 'cancelled', 'undelivered']),
   rejectionReason: z.string().optional(),
   cancellationReason: z.string().optional(),
   cancellationType: z.string().optional(),
-});
+}).strict();
