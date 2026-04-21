@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as requestService from '../services/request.service';
 import * as inventoryService from '../services/inventory.service';
+import * as warehouseService from '../services/warehouse.service';
 import { success, error } from '../utils/apiResponse';
 
 function qs(val: unknown): string | undefined {
@@ -9,6 +10,26 @@ function qs(val: unknown): string | undefined {
 
 function paramId(req: Request): number {
   return parseInt(String(req.params.id));
+}
+
+export async function stats(req: Request, res: Response) {
+  try {
+    const data = await warehouseService.getWarehouseStats(req.user!.warehouseId!);
+    return success(res, data);
+  } catch (err: any) {
+    return error(res, err.message);
+  }
+}
+
+export async function statsTrends(req: Request, res: Response) {
+  try {
+    const daysStr = qs(req.query.days);
+    const days = daysStr ? parseInt(daysStr) : 30;
+    const data = await warehouseService.getWarehouseStatsTrends(req.user!.warehouseId!, days);
+    return success(res, data);
+  } catch (err: any) {
+    return error(res, err.message);
+  }
 }
 
 export async function listRequests(req: Request, res: Response) {

@@ -8,6 +8,8 @@ const router = Router();
 
 router.use(authenticate, requireWarehouse);
 
+router.get('/stats', warehouseController.stats);
+router.get('/stats/trends', warehouseController.statsTrends);
 router.get('/requests', warehouseController.listRequests);
 router.patch('/requests/:id/status', validate(updateStatusSchema), warehouseController.updateRequestStatus);
 
