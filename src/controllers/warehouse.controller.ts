@@ -90,25 +90,33 @@ export async function updateRequestStatus(req: Request, res: Response) {
         quantity: item.quantity,
         department: result.department,
       }));
+      const actor = { userId: req.user!.userId, userEmail: req.user!.email };
+      const requestId = paramId(req);
 
       // خصم المخزون عند التجهيز (جاهز للاستلام)
       if (newStatus === 'ready_for_pickup') {
-        await inventoryService.consumeStock(warehouseId, stockItems);
+        await inventoryService.consumeStock(warehouseId, stockItems, { requestId, actor });
       }
 
       // إرجاع المخزون عند الرجوع من ready_for_pickup إلى in_progress
       if (newStatus === 'in_progress' && oldStatus === 'ready_for_pickup') {
-        await inventoryService.returnStock(warehouseId, stockItems);
+        await inventoryService.returnStock(warehouseId, stockItems, {
+          requestId, actor, reason: `إرجاع للمخزون (طلب #${requestId} → قيد التنفيذ)`,
+        });
       }
 
       // إرجاع المخزون عند عدم الاستلام
       if (newStatus === 'undelivered') {
-        await inventoryService.returnStock(warehouseId, stockItems);
+        await inventoryService.returnStock(warehouseId, stockItems, {
+          requestId, actor, reason: `إرجاع لعدم استلام الطلب #${requestId}`,
+        });
       }
 
       // إرجاع المخزون عند الإلغاء فقط إذا كان سبق وتم الخصم (كان بحالة ready_for_pickup)
       if (newStatus === 'cancelled' && oldStatus === 'ready_for_pickup') {
-        await inventoryService.returnStock(warehouseId, stockItems);
+        await inventoryService.returnStock(warehouseId, stockItems, {
+          requestId, actor, reason: `إرجاع لإلغاء الطلب #${requestId}`,
+        });
       }
     }
 
