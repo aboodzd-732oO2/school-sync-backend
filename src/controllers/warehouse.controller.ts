@@ -14,7 +14,12 @@ function paramId(req: Request): number {
 
 export async function stats(req: Request, res: Response) {
   try {
-    const data = await warehouseService.getWarehouseStats(req.user!.warehouseId!);
+    const daysStr = qs(req.query.days);
+    const days = daysStr ? parseInt(daysStr) : undefined;
+    const data = await warehouseService.getWarehouseStats(
+      req.user!.warehouseId!,
+      days && days > 0 ? days : undefined,
+    );
     return success(res, data);
   } catch (err: any) {
     return error(res, err.message);

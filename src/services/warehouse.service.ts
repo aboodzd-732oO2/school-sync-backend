@@ -1,7 +1,13 @@
 import { prisma } from '../config/db';
 
-export async function getWarehouseStats(warehouseId: number) {
-  const requestWhere = { warehouseId, status: { not: 'draft' as const } };
+export async function getWarehouseStats(warehouseId: number, days?: number) {
+  const requestWhere: any = { warehouseId, status: { not: 'draft' as const } };
+  if (days && days > 0) {
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (days - 1));
+    requestWhere.dateSubmitted = { gte: since };
+  }
 
   const [
     totalRequests,
@@ -23,7 +29,11 @@ export async function getWarehouseStats(warehouseId: number) {
     prisma.priority.findMany(),
     prisma.institution.findMany({ select: { id: true, name: true, institutionType: true } }),
     prisma.request.findMany({
-      where: { warehouseId, status: 'completed' },
+      where: {
+        warehouseId,
+        status: 'completed',
+        ...(requestWhere.dateSubmitted ? { dateSubmitted: requestWhere.dateSubmitted } : {}),
+      },
       select: { dateSubmitted: true, updatedAt: true },
     }),
     prisma.request.aggregate({ where: requestWhere, _sum: { studentsAffected: true } }),
@@ -67,18 +77,28 @@ export async function getWarehouseStats(warehouseId: number) {
     .sort((a, b) => b.level - a.level || b.count - a.count);
 
   const instMap = new Map(institutionsList.map(i => [i.id, i]));
-  const byInstitution = byInstitutionRaw
-    .map(row => {
-      const inst = instMap.get(row.institutionId);
-      return {
-        id: row.institutionId,
-        name: inst?.name ?? 'محذوفة',
-        institutionType: inst?.institutionType ?? 'school',
-        count: row._count._all,
-      };
-    })
+  const byInstitutionAll = byInstitutionRaw.map(row => {
+    const inst = instMap.get(row.institutionId);
+    return {
+      id: row.institutionId,
+      name: inst?.name ?? 'محذوفة',
+      institutionType: inst?.institutionType ?? 'school',
+      count: row._count._all,
+    };
+  });
+  const byInstitution = [...byInstitutionAll]
     .sort((a, b) => b.count - a.count)
     .slice(0, 5);
+
+  const schoolCount = byInstitutionAll
+    .filter(i => i.institutionType === 'school')
+    .reduce((sum, i) => sum + i.count, 0);
+  const universityCount = byInstitutionAll
+    .filter(i => i.institutionType === 'university')
+    .reduce((sum, i) => sum + i.count, 0);
+  const highPriorityCount = byPriority
+    .filter(p => p.level >= 3 || p.key === 'high' || p.key === 'urgent')
+    .reduce((sum, p) => sum + p.count, 0);
 
   let avgResolutionDays: number | null = null;
   if (completedForAvg.length > 0) {
@@ -119,6 +139,9 @@ export async function getWarehouseStats(warehouseId: number) {
       totalQuantity: quantityAgg._sum.quantity ?? 0,
       pendingCount: byStatus.pending,
       readyForPickupCount: byStatus.ready_for_pickup,
+      highPriorityCount,
+      schoolCount,
+      universityCount,
     },
     inventory: {
       totalItems: inventoryItems.length,
