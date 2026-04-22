@@ -295,6 +295,89 @@ export async function getWarehouseMovements(
   return { data, total, page, pageSize };
 }
 
+export async function getInventoryAlerts(warehouseId: number) {
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  since.setDate(since.getDate() - 29); // last 30 days (inclusive)
+
+  const [items, consumeRaw] = await Promise.all([
+    prisma.inventoryItem.findMany({
+      where: { warehouseId },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.inventoryMovement.groupBy({
+      by: ['inventoryItemId'],
+      where: {
+        warehouseId,
+        reason: 'consume',
+        createdAt: { gte: since },
+        inventoryItemId: { not: null },
+      },
+      _sum: { delta: true },
+    }),
+  ]);
+
+  // delta is signed; for 'consume' it's negative. Convert to positive "consumed units"
+  const consumedMap = new Map<number, number>();
+  for (const row of consumeRaw) {
+    if (row.inventoryItemId === null) continue;
+    consumedMap.set(row.inventoryItemId, Math.abs(row._sum.delta ?? 0));
+  }
+
+  const withMeta = items.map(item => {
+    const consumed30d = consumedMap.get(item.id) ?? 0;
+    const avgDailyConsumption = +(consumed30d / 30).toFixed(2);
+
+    // severity
+    const halfThreshold = Math.max(1, Math.floor(item.minThreshold / 2));
+    let severity: 'out-of-stock' | 'critical' | 'low' | 'healthy';
+    if (item.quantity === 0) severity = 'out-of-stock';
+    else if (item.quantity <= halfThreshold) severity = 'critical';
+    else if (item.quantity <= item.minThreshold) severity = 'low';
+    else severity = 'healthy';
+
+    // suggested reorder
+    let suggestedReorder = 0;
+    if (severity !== 'healthy') {
+      const thirtyDayRequirement = Math.ceil(avgDailyConsumption * 30);
+      const bufferQty = item.minThreshold * 2;
+      // cover current shortfall + 30-day projected consumption, minimum is 2x threshold
+      const shortfall = Math.max(0, item.minThreshold - item.quantity);
+      suggestedReorder = Math.max(bufferQty, thirtyDayRequirement + shortfall);
+    }
+
+    return {
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      department: item.department,
+      unitType: item.unitType,
+      quantity: item.quantity,
+      minThreshold: item.minThreshold,
+      consumed30d,
+      avgDailyConsumption,
+      suggestedReorder,
+      severity,
+    };
+  });
+
+  const summary = {
+    total: withMeta.length,
+    healthy: withMeta.filter(i => i.severity === 'healthy').length,
+    low: withMeta.filter(i => i.severity === 'low').length,
+    critical: withMeta.filter(i => i.severity === 'critical').length,
+    outOfStock: withMeta.filter(i => i.severity === 'out-of-stock').length,
+  };
+
+  // Return only items that need attention (non-healthy), sorted by severity then name
+  const severityOrder: Record<string, number> = { 'out-of-stock': 0, critical: 1, low: 2, healthy: 3 };
+  const items_filtered = withMeta
+    .filter(i => i.severity !== 'healthy')
+    .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity] || a.name.localeCompare(b.name, 'ar'));
+
+  return { summary, items: items_filtered };
+}
+
 export async function getItemHistory(itemId: number, warehouseId: number) {
   // Security: confirm item belongs to this warehouse (if it still exists)
   const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });

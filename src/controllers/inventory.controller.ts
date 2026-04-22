@@ -89,6 +89,15 @@ export async function movements(req: Request, res: Response) {
   }
 }
 
+export async function alerts(req: Request, res: Response) {
+  try {
+    const data = await inventoryService.getInventoryAlerts(req.user!.warehouseId!);
+    return success(res, data);
+  } catch (err: any) {
+    return error(res, err.message);
+  }
+}
+
 export async function itemHistory(req: Request, res: Response) {
   try {
     const data = await inventoryService.getItemHistory(paramId(req), req.user!.warehouseId!);
