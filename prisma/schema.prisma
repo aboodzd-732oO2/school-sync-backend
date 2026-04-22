@@ -114,6 +114,7 @@ model Institution {
   governorateId   Int
   user            User?
   requests        Request[]
+  reports         MonthlyReport[]
   deletedAt       DateTime?
 
   @@unique([name, governorateId])
@@ -288,11 +289,13 @@ model PasswordResetRequest {
 // ──────────────── التقارير الشهرية ────────────────
 
 model MonthlyReport {
-  id                    Int      @id @default(autoincrement())
+  id                    Int          @id @default(autoincrement())
   month                 Int
   year                  Int
-  generatedDate         DateTime @default(now())
-  institutionName       String
+  generatedDate         DateTime     @default(now())
+  institution           Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  institutionId         Int?
+  institutionName       String       // kept for historical/snapshot display
   totalRequests         Int
   completedRequests     Int
   pendingRequests       Int
@@ -300,5 +303,6 @@ model MonthlyReport {
   totalItems            Int
   totalStudentsAffected Int
 
-  @@unique([month, year, institutionName])
+  @@unique([month, year, institutionId])
+  @@index([institutionId])
 }

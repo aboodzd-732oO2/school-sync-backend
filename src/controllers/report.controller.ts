@@ -6,9 +6,18 @@ function paramId(req: Request): number {
   return parseInt(String(req.params.id));
 }
 
+function qs(val: unknown): string | undefined {
+  return typeof val === 'string' ? val : undefined;
+}
+
 export async function list(req: Request, res: Response) {
   try {
-    const reports = await reportService.getReports(req.user!.institutionId!);
+    const yearStr = qs(req.query.year);
+    const monthStr = qs(req.query.month);
+    const filters: { year?: number; month?: number } = {};
+    if (yearStr) filters.year = parseInt(yearStr);
+    if (monthStr) filters.month = parseInt(monthStr);
+    const reports = await reportService.getReports(req.user!.institutionId!, filters);
     return success(res, reports);
   } catch (err: any) {
     return error(res, err.message);
