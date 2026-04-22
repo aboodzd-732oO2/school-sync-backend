@@ -177,6 +177,7 @@ model Request {
 
   requestedItems   RequestItem[]
   comments         RequestComment[]
+  statusLogs       RequestStatusLog[]
 
   rejectionReason    String?
   rejectionDate      DateTime?
@@ -191,6 +192,21 @@ model Request {
   @@index([warehouseId])
   @@index([status])
   @@index([deletedAt])
+}
+
+model RequestStatusLog {
+  id         Int            @id @default(autoincrement())
+  request    Request        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId  Int
+  fromStatus RequestStatus?
+  toStatus   RequestStatus
+  userId     Int?
+  userEmail  String
+  userType   String
+  note       String?
+  createdAt  DateTime       @default(now())
+
+  @@index([requestId, createdAt])
 }
 
 model RequestItem {

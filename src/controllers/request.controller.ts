@@ -10,9 +10,21 @@ function paramId(req: Request): number {
   return parseInt(String(req.params.id));
 }
 
+function actorFromReq(req: Request) {
+  return {
+    userId: req.user!.userId,
+    userEmail: req.user!.email,
+    userType: req.user!.userType,
+  };
+}
+
 export async function create(req: Request, res: Response) {
   try {
-    const result = await requestService.createRequest(req.user!.institutionId!, req.body);
+    const result = await requestService.createRequest(
+      req.user!.institutionId!,
+      req.body,
+      actorFromReq(req),
+    );
     return success(res, result, 201);
   } catch (err: any) {
     return error(res, err.message, 400);
@@ -47,6 +59,19 @@ export async function getById(req: Request, res: Response) {
   }
 }
 
+export async function timeline(req: Request, res: Response) {
+  try {
+    const data = await requestService.getRequestTimeline(paramId(req), {
+      userType: req.user!.userType,
+      institutionId: req.user!.institutionId,
+      warehouseId: req.user!.warehouseId,
+    });
+    return success(res, data);
+  } catch (err: any) {
+    return error(res, err.message, 404);
+  }
+}
+
 export async function update(req: Request, res: Response) {
   try {
     const result = await requestService.updateRequest(paramId(req), req.user!.institutionId!, req.body);
@@ -72,7 +97,12 @@ export async function updateStatus(req: Request, res: Response) {
 
     const result = await requestService.updateRequestStatus(
       paramId(req), status as any,
-      { rejectionReason: req.body.rejectionReason, cancellationReason: req.body.cancellationReason, cancellationType: req.body.cancellationType }
+      {
+        rejectionReason: req.body.rejectionReason,
+        cancellationReason: req.body.cancellationReason,
+        cancellationType: req.body.cancellationType,
+        actor: actorFromReq(req),
+      },
     );
     return success(res, result);
   } catch (err: any) {

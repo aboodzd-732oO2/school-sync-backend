@@ -3,6 +3,36 @@ import { prisma } from '../config/db';
 import { createNotification } from './notification.service';
 import { emitToUsers } from '../socket';
 
+interface StatusLogActor {
+  userId?: number | null;
+  userEmail: string;
+  userType: string;
+}
+
+async function logStatusTransition(
+  requestId: number,
+  fromStatus: RequestStatus | null,
+  toStatus: RequestStatus,
+  actor: StatusLogActor,
+  note?: string,
+) {
+  try {
+    await prisma.requestStatusLog.create({
+      data: {
+        requestId,
+        fromStatus,
+        toStatus,
+        userId: actor.userId ?? null,
+        userEmail: actor.userEmail,
+        userType: actor.userType,
+        note,
+      },
+    });
+  } catch (err) {
+    console.error('Failed to log request status transition:', err);
+  }
+}
+
 interface CreateRequestInput {
   title: string;
   description: string;
@@ -23,7 +53,7 @@ interface CreateRequestInput {
   }>;
 }
 
-export async function createRequest(institutionId: number, input: CreateRequestInput) {
+export async function createRequest(institutionId: number, input: CreateRequestInput, actor?: StatusLogActor) {
   // ابحث عن المؤسسة لمعرفة المحافظة
   const institution = await prisma.institution.findUnique({
     where: { id: institutionId },
@@ -79,6 +109,15 @@ export async function createRequest(institutionId: number, input: CreateRequestI
   });
 
   const formatted = formatRequest(request);
+
+  // Log creation
+  await logStatusTransition(
+    request.id,
+    null,
+    request.status,
+    actor ?? { userEmail: 'institution', userType: 'institution' },
+    'إنشاء الطلب',
+  );
 
   // إشعار للمستودع عند طلب جديد (فقط إذا الحالة pending)
   if (request.status === 'pending' && request.warehouse?.user?.id) {
@@ -215,6 +254,7 @@ export async function updateRequest(requestId: number, institutionId: number, in
 
 export async function updateRequestStatus(requestId: number, status: RequestStatus, extra?: {
   rejectionReason?: string; cancellationReason?: string; cancellationType?: string;
+  actor?: StatusLogActor;
 }) {
   const request = await prisma.request.findUnique({ where: { id: requestId } });
   if (!request) throw new Error('الطلب غير موجود');
@@ -281,6 +321,20 @@ export async function updateRequestStatus(requestId: number, status: RequestStat
     });
   }
 
+  // Log status transition
+  const note = extra?.rejectionReason
+    ? `سبب الرفض: ${extra.rejectionReason}`
+    : extra?.cancellationReason
+      ? `سبب الإلغاء: ${extra.cancellationReason}`
+      : undefined;
+  await logStatusTransition(
+    requestId,
+    request.status,
+    status,
+    extra?.actor ?? { userEmail: 'system', userType: 'system' },
+    note,
+  );
+
   const formatted = formatRequest(updated);
   // بث تحديث الحالة للطرفين (المؤسسة والمستودع) لتحديث قوائمهما فوراً
   emitToUsers(
@@ -290,6 +344,51 @@ export async function updateRequestStatus(requestId: number, status: RequestStat
   );
 
   return formatted;
+}
+
+export async function getRequestTimeline(
+  requestId: number,
+  actor?: { userType: 'admin' | 'institution' | 'warehouse'; institutionId?: number | null; warehouseId?: number | null },
+) {
+  const request = await prisma.request.findUnique({ where: { id: requestId } });
+  if (!request) throw new Error('الطلب غير موجود');
+
+  // IDOR guard
+  if (actor && actor.userType !== 'admin') {
+    if (actor.userType === 'institution' && request.institutionId !== actor.institutionId) {
+      throw new Error('الطلب غير موجود');
+    }
+    if (actor.userType === 'warehouse' && request.warehouseId !== actor.warehouseId) {
+      throw new Error('الطلب غير موجود');
+    }
+  }
+
+  const logs = await prisma.requestStatusLog.findMany({
+    where: { requestId },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const statusMap: Record<string, string> = {
+    draft: 'draft',
+    pending: 'pending',
+    in_progress: 'in-progress',
+    ready_for_pickup: 'ready-for-pickup',
+    completed: 'completed',
+    rejected: 'rejected',
+    cancelled: 'cancelled',
+    undelivered: 'undelivered',
+  };
+
+  return logs.map(log => ({
+    id: log.id,
+    fromStatus: log.fromStatus ? statusMap[log.fromStatus] ?? log.fromStatus : null,
+    toStatus: statusMap[log.toStatus] ?? log.toStatus,
+    userId: log.userId,
+    userEmail: log.userEmail,
+    userType: log.userType,
+    note: log.note,
+    createdAt: log.createdAt.toISOString(),
+  }));
 }
 
 export async function deleteRequest(requestId: number, institutionId: number) {

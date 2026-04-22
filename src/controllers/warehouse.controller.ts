@@ -37,6 +37,18 @@ export async function statsTrends(req: Request, res: Response) {
   }
 }
 
+export async function requestTimeline(req: Request, res: Response) {
+  try {
+    const data = await requestService.getRequestTimeline(paramId(req), {
+      userType: req.user!.userType,
+      warehouseId: req.user!.warehouseId,
+    });
+    return success(res, data);
+  } catch (err: any) {
+    return error(res, err.message, 404);
+  }
+}
+
 export async function listRequests(req: Request, res: Response) {
   try {
     const filters = {
@@ -78,7 +90,12 @@ export async function updateRequestStatus(req: Request, res: Response) {
 
     const result = await requestService.updateRequestStatus(
       paramId(req), newStatus as any,
-      { rejectionReason: req.body.rejectionReason, cancellationReason: req.body.cancellationReason, cancellationType: req.body.cancellationType }
+      {
+        rejectionReason: req.body.rejectionReason,
+        cancellationReason: req.body.cancellationReason,
+        cancellationType: req.body.cancellationType,
+        actor: { userId: req.user!.userId, userEmail: req.user!.email, userType: req.user!.userType },
+      },
     );
 
     const items = result.requestedItems;

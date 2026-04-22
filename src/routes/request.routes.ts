@@ -11,6 +11,7 @@ router.use(authenticate, requireInstitution);
 router.get('/', requestController.list);
 router.post('/', validate(createRequestSchema), requestController.create);
 router.get('/:id', requestController.getById);
+router.get('/:id/timeline', requestController.timeline);
 router.patch('/:id', validate(updateRequestSchema), requestController.update);
 router.patch('/:id/status', validate(updateStatusSchema), requestController.updateStatus);
 router.delete('/:id', requestController.remove);
